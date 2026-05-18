@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Kvitteringer">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <title>Kvitteringer</title>
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <button id="back-btn" class="header-btn hidden" onclick="goBack()" aria-label="Tilbake"><i class="ti ti-chevron-left"></i></button>
+      <button id="settings-btn" class="header-btn" onclick="navigate('settings')" aria-label="Innstillinger"><i class="ti ti-settings"></i></button>
+      <h1 id="screen-title">Mine reiser</h1>
+      <button id="add-btn" class="header-btn" onclick="navigate('newTrip')" aria-label="Ny"><i class="ti ti-plus"></i></button>
+    </header>
+
+    <!-- Main content area -->
+    <main id="main-content"></main>
+
+    <!-- Hidden file input for camera -->
+    <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
+  </div>
+
+  <!-- Templates -->
+  <template id="tpl-trips-list">
+    <div class="screen">
+      <div id="stats-row" class="stats-row hidden">
+        <div class="stat-card">
+          <div class="stat-label">Aktive reiser</div>
+          <div class="stat-value" id="stat-active-value">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Denne måneden</div>
+          <div class="stat-value" id="stat-month-value">0 kr</div>
+        </div>
+      </div>
+      <div id="trips-container"></div>
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon"><i class="ti ti-receipt"></i></div>
+        <p class="empty-title">Ingen reiser ennå</p>
+        <p class="empty-subtitle">Trykk + for å starte en ny reise</p>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-new-trip">
+    <div class="screen">
+      <div class="form-group">
+        <label>Reisens navn</label>
+        <input type="text" id="trip-name" placeholder="F.eks. Oslo–Bergen, kundemøte" autofocus>
+      </div>
+      <div class="date-row">
+        <div class="form-group">
+          <label>Avreisedato</label>
+          <input type="date" id="trip-date-from">
+        </div>
+        <div class="form-group">
+          <label>Hjemreisedato</label>
+          <input type="date" id="trip-date-to">
+        </div>
+      </div>
+      <div id="duration-hint" class="duration-hint hidden"></div>
+      <div class="form-group">
+        <label>Beskrivelse (valgfritt)</label>
+        <textarea id="trip-description" rows="3" placeholder="Formål med reisen..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="createTrip()">Opprett reise</button>
+    </div>
+  </template>
+
+  <template id="tpl-trip-detail">
+    <div class="screen">
+      <div class="summary-card">
+        <div>
+          <div class="summary-label">Totalsum</div>
+          <div class="summary-amount" id="trip-total">0,00 kr</div>
+        </div>
+        <div class="summary-count" id="receipt-count">0 kvitt.</div>
+      </div>
+
+      <div id="category-breakdown"></div>
+
+      <div id="receipts-container"></div>
+
+      <div class="action-buttons">
+        <button class="btn btn-primary" onclick="captureReceipt()"><i class="ti ti-camera"></i> Ta bilde av kvittering</button>
+        <button class="btn btn-secondary" onclick="batchCapture()"><i class="ti ti-photo-plus"></i> Batch-skanning (flere bilder)</button>
+        <button class="btn btn-secondary" id="upload-btn"><i class="ti ti-photo"></i> Velg fra bilder</button>
+        <button class="btn btn-secondary hidden" id="export-btn" onclick="exportToPDF()"><i class="ti ti-file-text"></i> Eksporter som PDF</button>
+        <button class="btn btn-secondary hidden" id="csv-btn" onclick="exportToCSV()"><i class="ti ti-table"></i> Eksporter som CSV</button>
+        <button class="btn btn-danger-text" onclick="confirmDeleteTrip()">Slett reise</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-edit-receipt">
+    <div class="screen">
+      <div class="receipt-image-container">
+        <img id="receipt-preview" alt="Kvittering">
+      </div>
+
+      <div id="ocr-status" class="ocr-status hidden"></div>
+
+      <div class="form-group">
+        <label>Butikk/sted</label>
+        <input type="text" id="r-merchant" placeholder="F.eks. REMA 1000">
+      </div>
+      <div class="form-group">
+        <label>Beløp</label>
+        <div class="amount-row">
+          <input type="number" id="r-amount" step="0.01" placeholder="0,00" inputmode="decimal">
+          <select id="r-currency">
+            <option value="NOK">NOK kr</option>
+            <option value="EUR">EUR €</option>
+            <option value="USD">USD $</option>
+            <option value="GBP">GBP £</option>
+            <option value="SEK">SEK kr</option>
+            <option value="DKK">DKK kr</option>
+            <option value="CHF">CHF</option>
+            <option value="PLN">PLN zł</option>
+            <option value="JPY">JPY ¥</option>
+            <option value="AUD">AUD $</option>
+            <option value="CAD">CAD $</option>
+            <option value="THB">THB ฿</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Dato</label>
+        <input type="date" id="r-date">
+      </div>
+      <div class="form-group">
+        <label>Kategori</label>
+        <div class="category-grid" id="category-grid"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Notat (valgfritt)</label>
+        <textarea id="r-note" rows="2" placeholder="F.eks. lunsjmøte med kunde"></textarea>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveReceipt()">Lagre kvittering</button>
+      <button class="btn btn-danger-text" id="delete-receipt-btn" onclick="deleteCurrentReceipt()">Slett kvittering</button>
+    </div>
+  </template>
+
+  <template id="tpl-settings">
+    <div class="screen">
+      <div class="section-header">OCR-motor</div>
+      <p class="settings-desc">Velg hvordan kvitteringer skal leses automatisk.</p>
+      
+      <label class="radio-card">
+        <input type="radio" name="ocr-engine" value="tesseract" id="engine-tesseract">
+        <div class="radio-content">
+          <div class="radio-title">Tesseract <span class="badge-free">Gratis</span></div>
+          <div class="radio-subtitle">Kjører lokalt i nettleseren. Fungerer offline, men har lavere presisjon. Sliter med skrå/uklare bilder.</div>
+        </div>
+      </label>
+      
+      <label class="radio-card">
+        <input type="radio" name="ocr-engine" value="claude" id="engine-claude">
+        <div class="radio-content">
+          <div class="radio-title">Claude API <span class="badge-paid">Krever API-nøkkel</span></div>
+          <div class="radio-subtitle">Mye høyere presisjon på kvitteringer. Ca. 0,01–0,03 kr per kvittering. Krever internett.</div>
+        </div>
+      </label>
+
+      <div id="claude-settings" class="hidden">
+        <div class="section-header" style="margin-top: 24px;">Claude API-nøkkel</div>
+        <p class="settings-desc">
+          Hent din egen nøkkel på 
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. 
+          Nøkkelen lagres kun lokalt på denne enheten og sendes aldri til andre.
+        </p>
+        <div class="form-group">
+          <input type="password" id="claude-api-key" placeholder="sk-ant-..." autocomplete="off">
+        </div>
+        <button class="btn btn-secondary" onclick="testApiKey()" style="margin-bottom: 8px;">Test nøkkel</button>
+        <div id="api-test-result"></div>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveSettingsAndBack()" style="margin-top: 24px;">Lagre innstillinger</button>
+      
+      <div class="section-header" style="margin-top: 32px;">Om appen</div>
+      <p class="settings-desc">
+        Alt lagres lokalt på din enhet. Ingen data sendes til noen server (med unntak av Claude API hvis du bruker det).
+      </p>
+    </div>
+  </template>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- App scripts -->
+  <script src="storage.js"></script>
+  <script src="ocr.js"></script>
+  <script src="pdf.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Register service worker for PWA functionality
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
