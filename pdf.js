@@ -230,14 +230,43 @@ function formatDateString(dateStr) {
 async function exportTripToPDF(trip) {
   const doc = await generatePDF(trip);
   const filename = `Reiseregning_${(trip.name || 'reise').replace(/[^a-z0-9æøå\-]/gi, '_')}.pdf`;
-  
-  // On iOS, the cleanest way is to open in new tab so user can save/share via system share sheet
-  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-  } else {
-    doc.save(filename);
-  }
+  const blob = doc.output('blob');
+  await shareOrDownload(blob, filename, 'application/pdf');
   return filename;
+}
+
+// Shared logic for sharing PDF/CSV on iOS, downloading on desktop
+async function shareOrDownload(blob, filename, mimeType) {
+  const file = new File([blob], filename, { type: mimeType });
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  // Try Web Share API first (works great on iOS and modern Android)
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: filename
+      });
+      return;
+    } catch (err) {
+      // User cancelled or share failed — fall through to download
+      if (err.name === 'AbortError') return;
+      console.warn('Share failed, falling back:', err);
+    }
+  }
+
+  // Fallback: download via anchor tag
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  // For iOS Safari, also set target so it opens if download doesn't trigger
+  if (isIOS) {
+    a.target = '_blank';
+    a.rel = 'noopener';
+  }
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

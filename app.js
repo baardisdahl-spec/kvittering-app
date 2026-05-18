@@ -811,19 +811,7 @@ async function exportToCSV() {
   const blob = new Blob(['\uFEFF' + csvText], { type: 'text/csv;charset=utf-8' });
   const filename = `Reiseregning_${(trip.name || 'reise').replace(/[^a-z0-9æøåÆØÅ\-]/gi, '_')}.csv`;
   
-  // Last ned
-  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-    // iOS: åpne i ny fane så bruker kan dele
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-  } else {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  await shareOrDownload(blob, filename, 'text/csv');
   showToast(`CSV generert: ${filename}`);
 }
 
