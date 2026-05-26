@@ -20,7 +20,9 @@ async function generatePDF(trip) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(100);
-  doc.text(`Generert: ${formatDateNorwegian(new Date())}`, margin, 32);
+  const statusLabels = { draft: 'Utkast', submitted: 'Levert', refunded: 'Refundert' };
+  const statusText = statusLabels[trip.status || 'draft'];
+  doc.text(`Generert: ${formatDateNorwegian(new Date())}   ·   Status: ${statusText}`, margin, 32);
   doc.setTextColor(0);
 
   // Trip info

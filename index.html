@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Kvitteringer">
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="styles.css">
   <title>Kvitteringer</title>
@@ -18,13 +19,32 @@
     <!-- Header -->
     <header class="header">
       <button id="back-btn" class="header-btn hidden" onclick="goBack()" aria-label="Tilbake"><i class="ti ti-chevron-left"></i></button>
-      <button id="settings-btn" class="header-btn" onclick="navigate('settings')" aria-label="Innstillinger"><i class="ti ti-settings"></i></button>
-      <h1 id="screen-title">Mine reiser</h1>
-      <button id="add-btn" class="header-btn" onclick="navigate('newTrip')" aria-label="Ny"><i class="ti ti-plus"></i></button>
+      <h1 id="screen-title">Oversikt</h1>
+      <button id="header-action" class="header-btn hidden" aria-label="Handling"></button>
     </header>
 
     <!-- Main content area -->
     <main id="main-content"></main>
+
+    <!-- Bottom tab bar -->
+    <nav id="tab-bar" class="tab-bar">
+      <button class="tab-item active" data-tab="overview" onclick="switchTab('overview')">
+        <i class="ti ti-home"></i>
+        <span>Oversikt</span>
+      </button>
+      <button class="tab-item" data-tab="newTrip" onclick="switchTab('newTrip')">
+        <i class="ti ti-plus"></i>
+        <span>Ny reise</span>
+      </button>
+      <button class="tab-item" data-tab="archive" onclick="switchTab('archive')">
+        <i class="ti ti-archive"></i>
+        <span>Arkiv</span>
+      </button>
+      <button class="tab-item" data-tab="settings" onclick="switchTab('settings')">
+        <i class="ti ti-settings"></i>
+        <span>Innstillinger</span>
+      </button>
+    </nav>
 
     <!-- Hidden file input for camera -->
     <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
@@ -33,6 +53,7 @@
   <!-- Templates -->
   <template id="tpl-trips-list">
     <div class="screen">
+      <div id="greeting" class="greeting"></div>
       <div id="stats-row" class="stats-row hidden">
         <div class="stat-card">
           <div class="stat-label">Aktive reiser</div>
@@ -43,11 +64,33 @@
           <div class="stat-value" id="stat-month-value">0 kr</div>
         </div>
       </div>
+      <div id="trips-toolbar" class="trips-toolbar hidden">
+        <select id="sort-select" class="sort-select">
+          <option value="created-desc">Nyeste først</option>
+          <option value="created-asc">Eldste først</option>
+          <option value="date-desc">Reisedato (nyeste)</option>
+          <option value="date-asc">Reisedato (eldste)</option>
+          <option value="amount-desc">Høyest beløp</option>
+          <option value="amount-asc">Lavest beløp</option>
+          <option value="name-asc">Navn (A–Å)</option>
+        </select>
+      </div>
       <div id="trips-container"></div>
       <div id="empty-state" class="empty-state hidden">
         <div class="empty-icon"><i class="ti ti-receipt"></i></div>
-        <p class="empty-title">Ingen reiser ennå</p>
-        <p class="empty-subtitle">Trykk + for å starte en ny reise</p>
+        <p class="empty-title">Ingen aktive reiser</p>
+        <p class="empty-subtitle">Trykk «Ny reise» nederst for å starte</p>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-archive">
+    <div class="screen">
+      <div id="archive-container"></div>
+      <div id="archive-empty" class="empty-state hidden">
+        <div class="empty-icon"><i class="ti ti-archive"></i></div>
+        <p class="empty-title">Arkivet er tomt</p>
+        <p class="empty-subtitle">Reiser merket «Refundert» havner her</p>
       </div>
     </div>
   </template>
@@ -77,8 +120,45 @@
     </div>
   </template>
 
+  <template id="tpl-edit-trip">
+    <div class="screen">
+      <div class="form-group">
+        <label>Reisens navn</label>
+        <input type="text" id="edit-trip-name" placeholder="F.eks. Oslo–Bergen, kundemøte">
+      </div>
+      <div class="date-row">
+        <div class="form-group">
+          <label>Avreisedato</label>
+          <input type="date" id="edit-trip-date-from">
+        </div>
+        <div class="form-group">
+          <label>Hjemreisedato</label>
+          <input type="date" id="edit-trip-date-to">
+        </div>
+      </div>
+      <div id="edit-duration-hint" class="duration-hint hidden"></div>
+      <div class="form-group">
+        <label>Beskrivelse (valgfritt)</label>
+        <textarea id="edit-trip-description" rows="3" placeholder="Formål med reisen..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="saveEditedTrip()">Lagre endringer</button>
+    </div>
+  </template>
+
   <template id="tpl-trip-detail">
     <div class="screen">
+      <div class="status-selector" id="status-selector">
+        <button class="status-option" data-status="draft" onclick="setTripStatus('draft')">
+          <i class="ti ti-pencil"></i> Utkast
+        </button>
+        <button class="status-option" data-status="submitted" onclick="setTripStatus('submitted')">
+          <i class="ti ti-send"></i> Levert
+        </button>
+        <button class="status-option" data-status="refunded" onclick="setTripStatus('refunded')">
+          <i class="ti ti-check"></i> Refundert
+        </button>
+      </div>
+
       <div class="summary-card">
         <div>
           <div class="summary-label">Totalsum</div>
@@ -97,6 +177,7 @@
         <button class="btn btn-secondary" id="upload-btn"><i class="ti ti-photo"></i> Velg fra bilder</button>
         <button class="btn btn-secondary hidden" id="export-btn" onclick="exportToPDF()"><i class="ti ti-file-text"></i> Eksporter som PDF</button>
         <button class="btn btn-secondary hidden" id="csv-btn" onclick="exportToCSV()"><i class="ti ti-table"></i> Eksporter som CSV</button>
+        <button class="btn btn-secondary" onclick="navigate('editTrip')"><i class="ti ti-pencil"></i> Rediger reise</button>
         <button class="btn btn-danger-text" onclick="confirmDeleteTrip()">Slett reise</button>
       </div>
     </div>

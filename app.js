@@ -2,9 +2,9 @@
 let currentTripId = null;
 let currentReceiptId = null;
 let pendingImage = null;
-let navStack = ['trips'];
 let batchQueue = [];
 let batchInProgress = false;
+let currentSort = 'created-desc';
 
 // ============ CATEGORIES ============
 const CATEGORIES = [
@@ -23,58 +23,94 @@ function getCategory(id) {
 }
 
 // ============ NAVIGATION ============
+// Tab-based: each tab has its own nav stack. Detail screens push onto current tab's stack.
+let currentTab = 'overview';
+const tabStacks = {
+  overview: ['trips'],
+  newTrip: ['newTrip'],
+  archive: ['archive'],
+  settings: ['settings']
+};
+
+// Which tab a screen belongs to (for detail screens pushed onto a stack)
+function getActiveStack() {
+  return tabStacks[currentTab];
+}
+
+async function switchTab(tab) {
+  currentTab = tab;
+  // newTrip always resets to a fresh form
+  if (tab === 'newTrip') {
+    tabStacks.newTrip = ['newTrip'];
+  }
+  updateTabBar();
+  await render();
+}
+
+function updateTabBar() {
+  document.querySelectorAll('.tab-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.tab === currentTab);
+  });
+}
+
 async function navigate(screen, opts = {}) {
-  if (opts.replace) navStack[navStack.length - 1] = screen;
-  else navStack.push(screen);
+  const stack = getActiveStack();
+  if (opts.replace) stack[stack.length - 1] = screen;
+  else stack.push(screen);
   await render();
 }
 
 async function goBack() {
-  if (navStack.length > 1) {
-    navStack.pop();
+  const stack = getActiveStack();
+  if (stack.length > 1) {
+    stack.pop();
     await render();
   }
 }
 
 async function render() {
-  const screen = navStack[navStack.length - 1];
+  const stack = getActiveStack();
+  const screen = stack[stack.length - 1];
   const main = document.getElementById('main-content');
   const backBtn = document.getElementById('back-btn');
-  const addBtn = document.getElementById('add-btn');
-  const settingsBtn = document.getElementById('settings-btn');
+  const headerAction = document.getElementById('header-action');
   const title = document.getElementById('screen-title');
+  const tabBar = document.getElementById('tab-bar');
 
-  // Show/hide back button (and hide settings when not on trips list)
-  backBtn.classList.toggle('hidden', navStack.length <= 1);
-  settingsBtn.classList.toggle('hidden', screen !== 'trips');
+  // Back button shows when we're deeper than the tab root
+  backBtn.classList.toggle('hidden', stack.length <= 1);
+  // Hide tab bar on detail screens for a focused view
+  tabBar.classList.toggle('hidden', stack.length > 1);
+  headerAction.classList.add('hidden');
   
   switch (screen) {
     case 'trips':
-      title.textContent = 'Mine reiser';
-      addBtn.classList.remove('hidden');
-      addBtn.textContent = '+';
-      addBtn.onclick = () => navigate('newTrip');
+      title.textContent = 'Oversikt';
       await renderTripsList(main);
+      break;
+    case 'archive':
+      title.textContent = 'Arkiv';
+      await renderArchive(main);
       break;
     case 'newTrip':
       title.textContent = 'Ny reise';
-      addBtn.classList.add('hidden');
       renderNewTrip(main);
       break;
     case 'tripDetail':
       const trip = await getTrip(currentTripId);
       title.textContent = trip ? trip.name : 'Reise';
-      addBtn.classList.add('hidden');
       await renderTripDetail(main, trip);
+      break;
+    case 'editTrip':
+      title.textContent = 'Rediger reise';
+      await renderEditTrip(main);
       break;
     case 'editReceipt':
       title.textContent = currentReceiptId ? 'Rediger kvittering' : 'Ny kvittering';
-      addBtn.classList.add('hidden');
       await renderEditReceipt(main);
       break;
     case 'settings':
       title.textContent = 'Innstillinger';
-      addBtn.classList.add('hidden');
       renderSettings(main);
       break;
   }
@@ -151,7 +187,6 @@ function saveSettingsAndBack() {
   
   saveSettings({ ocrEngine: engine, claudeApiKey: apiKey });
   showToast('Innstillinger lagret');
-  goBack();
 }
 
 // ============ TRIPS LIST ============
@@ -160,7 +195,15 @@ async function renderTripsList(container) {
   container.innerHTML = '';
   container.appendChild(tpl.content.cloneNode(true));
   
-  const trips = await getAllTrips();
+  // Personal greeting
+  container.querySelector('#greeting').innerHTML = `
+    <div class="greeting-hello">${getGreeting()}</div>
+    <div class="greeting-sub">${getGreetingSub()}</div>
+  `;
+  
+  const allTrips = await getAllTrips();
+  // Only show active (non-archived) trips on the overview
+  const trips = allTrips.filter(t => !isArchived(t));
   const tripsContainer = container.querySelector('#trips-container');
   const emptyState = container.querySelector('#empty-state');
   
@@ -191,35 +234,73 @@ async function renderTripsList(container) {
   });
   container.querySelector('#stat-month-value').textContent = formatCurrency(monthTotal, 'NOK');
   
-  trips.forEach(trip => {
-    const totals = sumByCurrency(trip.receipts);
-    const usedCats = uniqueCategories(trip.receipts);
-    const card = document.createElement('div');
-    card.className = 'trip-card';
-    card.onclick = () => openTrip(trip.id);
-    
-    const tagsHtml = usedCats.length > 0 
-      ? `<div class="category-tags">
-           ${usedCats.slice(0, 4).map(catId => {
-             const cat = getCategory(catId);
-             return `<span class="category-tag ${cat.class}"><i class="ti ${cat.icon}"></i>${cat.name}</span>`;
-           }).join('')}
-         </div>`
-      : '';
-    
-    card.innerHTML = `
-      <div class="trip-card-header">
-        <span class="trip-name">${escapeHtml(trip.name)}</span>
-        <span class="trip-meta">${trip.receipts.length} kvitt.</span>
-      </div>
-      <div class="trip-card-footer">
-        <span class="trip-date">${formatTripDateRange(trip)}</span>
-        <span class="trip-total">${formatTotals(totals)}</span>
-      </div>
-      ${tagsHtml}
-    `;
-    tripsContainer.appendChild(card);
+  // Show sorting toolbar (only if 2+ trips)
+  const toolbar = container.querySelector('#trips-toolbar');
+  const sortSelect = container.querySelector('#sort-select');
+  if (trips.length >= 2) {
+    toolbar.classList.remove('hidden');
+    sortSelect.value = currentSort;
+    sortSelect.onchange = () => {
+      currentSort = sortSelect.value;
+      render();
+    };
+  }
+  
+  const sortedTrips = sortTrips(trips, currentSort);
+  sortedTrips.forEach(trip => {
+    tripsContainer.appendChild(buildTripCard(trip));
   });
+}
+
+// Build a trip card element (shared by overview and archive)
+function buildTripCard(trip) {
+  const totals = sumByCurrency(trip.receipts);
+  const usedCats = uniqueCategories(trip.receipts);
+  const status = trip.status || 'draft';
+  const card = document.createElement('div');
+  card.className = 'trip-card';
+  card.onclick = () => openTrip(trip.id);
+  
+  const tagsHtml = usedCats.length > 0 
+    ? `<div class="category-tags">
+         ${usedCats.slice(0, 4).map(catId => {
+           const cat = getCategory(catId);
+           return `<span class="category-tag ${cat.class}"><i class="ti ${cat.icon}"></i>${cat.name}</span>`;
+         }).join('')}
+       </div>`
+    : '';
+  
+  card.innerHTML = `
+    <div class="trip-card-header">
+      <span class="trip-name">${escapeHtml(trip.name)}</span>
+      <span class="status-badge ${status}">${STATUS_LABELS[status]}</span>
+    </div>
+    <div class="trip-card-footer">
+      <span class="trip-date">${formatTripDateRange(trip)}</span>
+      <span class="trip-total">${formatTotals(totals)}</span>
+    </div>
+    ${tagsHtml}
+  `;
+  return card;
+}
+
+// Greeting based on time of day
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 6) return 'God natt';
+  if (h < 10) return 'God morgen';
+  if (h < 18) return 'God dag';
+  return 'God kveld';
+}
+
+function getGreetingSub() {
+  const messages = [
+    'Klar for å registrere kvitteringer?',
+    'Hold reiseregningene i orden.',
+    'Her er reisene dine.'
+  ];
+  // Pick based on day so it's stable through a session
+  return messages[new Date().getDate() % messages.length];
 }
 
 function uniqueCategories(receipts) {
@@ -228,6 +309,34 @@ function uniqueCategories(receipts) {
     if (r.category) seen.add(r.category);
   }
   return Array.from(seen);
+}
+
+// Sort trips by selected criterion
+function sortTrips(trips, sortKey) {
+  const sorted = [...trips];
+  // Helper: total in NOK only (for amount sorting — mixes currencies imperfectly but practical)
+  const tripTotal = (t) => t.receipts.reduce((s, r) => s + (r.amount || 0), 0);
+  
+  switch (sortKey) {
+    case 'created-asc':
+      return sorted.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    case 'created-desc':
+      return sorted.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    case 'date-asc':
+      return sorted.sort((a, b) => 
+        (a.dateFrom || a.date || '').localeCompare(b.dateFrom || b.date || ''));
+    case 'date-desc':
+      return sorted.sort((a, b) => 
+        (b.dateFrom || b.date || '').localeCompare(a.dateFrom || a.date || ''));
+    case 'amount-asc':
+      return sorted.sort((a, b) => tripTotal(a) - tripTotal(b));
+    case 'amount-desc':
+      return sorted.sort((a, b) => tripTotal(b) - tripTotal(a));
+    case 'name-asc':
+      return sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'nb'));
+    default:
+      return sorted;
+  }
 }
 
 // Group receipts by currency and sum each
@@ -273,6 +382,58 @@ function formatTripDateRange(trip) {
 function openTrip(id) {
   currentTripId = id;
   navigate('tripDetail');
+}
+
+// ============ TRIP STATUS ============
+const STATUS_LABELS = {
+  draft: 'Utkast',
+  submitted: 'Levert',
+  refunded: 'Refundert'
+};
+
+async function setTripStatus(status) {
+  const trip = await getTrip(currentTripId);
+  if (!trip) return;
+  trip.status = status;
+  await saveTrip(trip);
+  
+  // Update the visual selection immediately
+  document.querySelectorAll('.status-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.status === status);
+  });
+  
+  if (status === 'refunded') {
+    showToast('Reise merket som refundert – flyttet til arkiv');
+  } else {
+    showToast(`Status: ${STATUS_LABELS[status]}`);
+  }
+}
+
+// A trip is "archived" when its status is refunded
+function isArchived(trip) {
+  return (trip.status || 'draft') === 'refunded';
+}
+
+// ============ ARCHIVE ============
+async function renderArchive(container) {
+  const tpl = document.getElementById('tpl-archive');
+  container.innerHTML = '';
+  container.appendChild(tpl.content.cloneNode(true));
+  
+  const allTrips = await getAllTrips();
+  const archived = allTrips.filter(isArchived);
+  const archiveContainer = container.querySelector('#archive-container');
+  const archiveEmpty = container.querySelector('#archive-empty');
+  
+  if (archived.length === 0) {
+    archiveEmpty.classList.remove('hidden');
+    return;
+  }
+  
+  const sorted = sortTrips(archived, currentSort);
+  sorted.forEach(trip => {
+    archiveContainer.appendChild(buildTripCard(trip));
+  });
 }
 
 // ============ NEW TRIP ============
@@ -346,13 +507,91 @@ async function createTrip() {
     dateFrom,
     dateTo,
     description,
+    status: 'draft',
     receipts: [],
     createdAt: Date.now()
   };
   
   await saveTrip(trip);
   currentTripId = trip.id;
-  navigate('tripDetail', { replace: true });
+  // Switch to overview tab and open the new trip
+  currentTab = 'overview';
+  tabStacks.overview = ['trips', 'tripDetail'];
+  tabStacks.newTrip = ['newTrip']; // reset form for next time
+  updateTabBar();
+  await render();
+}
+
+// ============ EDIT TRIP ============
+async function renderEditTrip(container) {
+  const tpl = document.getElementById('tpl-edit-trip');
+  container.innerHTML = '';
+  container.appendChild(tpl.content.cloneNode(true));
+  
+  const trip = await getTrip(currentTripId);
+  if (!trip) return;
+  
+  const nameInput = container.querySelector('#edit-trip-name');
+  const fromInput = container.querySelector('#edit-trip-date-from');
+  const toInput = container.querySelector('#edit-trip-date-to');
+  const descInput = container.querySelector('#edit-trip-description');
+  
+  nameInput.value = trip.name || '';
+  fromInput.value = trip.dateFrom || trip.date || '';
+  toInput.value = trip.dateTo || '';
+  descInput.value = trip.description || '';
+  
+  // Live duration hint
+  const updateHint = () => {
+    const hint = container.querySelector('#edit-duration-hint');
+    const from = fromInput.value;
+    const to = toInput.value;
+    if (from && to) {
+      const days = calculateDays(from, to);
+      if (days < 0) {
+        hint.classList.remove('hidden');
+        hint.innerHTML = '<i class="ti ti-alert-circle"></i> Hjemreisedato kan ikke være før avreisedato';
+        hint.style.background = 'rgba(255, 59, 48, 0.1)';
+        hint.style.color = 'var(--danger)';
+      } else {
+        hint.classList.remove('hidden');
+        const dayLabel = days === 1 ? 'dag' : 'dager';
+        hint.innerHTML = `<i class="ti ti-calendar"></i> Varighet: ${days} ${dayLabel}`;
+        hint.style.background = '';
+        hint.style.color = '';
+      }
+    } else {
+      hint.classList.add('hidden');
+    }
+  };
+  fromInput.addEventListener('change', updateHint);
+  toInput.addEventListener('change', updateHint);
+  updateHint();
+}
+
+async function saveEditedTrip() {
+  const trip = await getTrip(currentTripId);
+  if (!trip) return;
+  
+  const name = document.getElementById('edit-trip-name').value.trim() || 'Ny reise';
+  const dateFrom = document.getElementById('edit-trip-date-from').value;
+  const dateTo = document.getElementById('edit-trip-date-to').value;
+  const description = document.getElementById('edit-trip-description').value.trim();
+  
+  if (dateFrom && dateTo && new Date(dateTo) < new Date(dateFrom)) {
+    showToast('Hjemreisedato kan ikke være før avreisedato');
+    return;
+  }
+  
+  trip.name = name;
+  trip.dateFrom = dateFrom;
+  trip.dateTo = dateTo;
+  trip.date = dateFrom; // keep in sync for backwards compatibility
+  trip.description = description;
+  
+  await saveTrip(trip);
+  showToast('Reise oppdatert');
+  goBack();
 }
 
 // ============ TRIP DETAIL ============
@@ -365,6 +604,12 @@ async function renderTripDetail(container, trip) {
   const tpl = document.getElementById('tpl-trip-detail');
   container.innerHTML = '';
   container.appendChild(tpl.content.cloneNode(true));
+  
+  // Highlight current status
+  const status = trip.status || 'draft';
+  container.querySelectorAll('.status-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.status === status);
+  });
   
   const totals = sumByCurrency(trip.receipts);
   container.querySelector('#trip-total').textContent = formatTotals(totals);
@@ -578,7 +823,8 @@ async function confirmDeleteTrip() {
   if (!confirm('Slette denne reisen og alle kvitteringer?')) return;
   await deleteTrip(currentTripId);
   currentTripId = null;
-  navStack = ['trips'];
+  // Reset to the root of whichever tab we're in
+  tabStacks[currentTab] = [currentTab === 'archive' ? 'archive' : 'trips'];
   await render();
   showToast('Reise slettet');
 }
@@ -960,4 +1206,7 @@ function openLightbox(imageData) {
 }
 
 // ============ INIT ============
-document.addEventListener('DOMContentLoaded', () => render());
+document.addEventListener('DOMContentLoaded', () => {
+  updateTabBar();
+  render();
+});
