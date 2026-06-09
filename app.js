@@ -29,6 +29,7 @@ const tabStacks = {
   overview: ['trips'],
   newTrip: ['newTrip'],
   archive: ['archive'],
+  stats: ['stats'],
   settings: ['settings']
 };
 
@@ -91,6 +92,10 @@ async function render() {
     case 'archive':
       title.textContent = 'Arkiv';
       await renderArchive(main);
+      break;
+    case 'stats':
+      title.textContent = 'Statistikk';
+      await renderStats(main);
       break;
     case 'newTrip':
       title.textContent = 'Ny reise';
@@ -195,15 +200,37 @@ async function renderTripsList(container) {
   container.innerHTML = '';
   container.appendChild(tpl.content.cloneNode(true));
   
-  // Personal greeting
-  container.querySelector('#greeting').innerHTML = `
-    <div class="greeting-hello">${getGreeting()}</div>
-    <div class="greeting-sub">${getGreetingSub()}</div>
-  `;
-  
   const allTrips = await getAllTrips();
-  // Only show active (non-archived) trips on the overview
   const trips = allTrips.filter(t => !isArchived(t));
+  
+  // Fargerik greeting med badges
+  const greetingHello = container.querySelector('.greeting-hello');
+  const greetingSub = container.querySelector('.greeting-sub');
+  greetingHello.textContent = getGreeting();
+  greetingSub.textContent = getGreetingSub();
+  
+  if (trips.length > 0) {
+    const badges = container.querySelector('#greeting-badges');
+    badges.classList.remove('hidden');
+    
+    // Tell reisedager (totalt på tvers av aktive reiser)
+    let totalDays = 0;
+    let totalNOK = 0;
+    trips.forEach(t => {
+      if (t.dateFrom && t.dateTo) {
+        const d = calculateDays(t.dateFrom, t.dateTo);
+        if (d > 0) totalDays += d;
+      }
+      t.receipts.forEach(r => {
+        if ((r.currency || 'NOK') === 'NOK') totalNOK += (r.amount || 0);
+      });
+    });
+    
+    container.querySelector('#badge-trips').textContent = `${trips.length} reise${trips.length !== 1 ? 'r' : ''}`;
+    container.querySelector('#badge-days').textContent = `${totalDays} dag${totalDays !== 1 ? 'er' : ''}`;
+    container.querySelector('#badge-amount').textContent = formatCurrency(totalNOK, 'NOK');
+  }
+  
   const tripsContainer = container.querySelector('#trips-container');
   const emptyState = container.querySelector('#empty-state');
   
@@ -212,29 +239,6 @@ async function renderTripsList(container) {
     return;
   }
   
-  // Render stats row
-  const statsRow = container.querySelector('#stats-row');
-  statsRow.classList.remove('hidden');
-  container.querySelector('#stat-active-value').textContent = trips.length;
-  
-  // Calculate this month's total in NOK
-  const now = new Date();
-  const thisMonth = now.getMonth();
-  const thisYear = now.getFullYear();
-  let monthTotal = 0;
-  trips.forEach(t => {
-    t.receipts.forEach(r => {
-      if (r.date) {
-        const d = new Date(r.date);
-        if (d.getMonth() === thisMonth && d.getFullYear() === thisYear && (r.currency || 'NOK') === 'NOK') {
-          monthTotal += (r.amount || 0);
-        }
-      }
-    });
-  });
-  container.querySelector('#stat-month-value').textContent = formatCurrency(monthTotal, 'NOK');
-  
-  // Show sorting toolbar (only if 2+ trips)
   const toolbar = container.querySelector('#trips-toolbar');
   const sortSelect = container.querySelector('#sort-select');
   if (trips.length >= 2) {
@@ -434,6 +438,199 @@ async function renderArchive(container) {
   sorted.forEach(trip => {
     archiveContainer.appendChild(buildTripCard(trip));
   });
+}
+
+// ============ STATISTICS ============
+let statsPeriod = 'all';
+let statsCustomFrom = null;
+let statsCustomTo = null;
+
+function setStatsPeriod(period) {
+  statsPeriod = period;
+  const customRange = document.getElementById('stats-custom-range');
+  if (customRange) {
+    customRange.classList.toggle('hidden', period !== 'custom');
+  }
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === period);
+  });
+  if (period !== 'custom') {
+    refreshStatsDisplay();
+  }
+}
+
+function applyCustomPeriod() {
+  statsCustomFrom = document.getElementById('stats-from').value;
+  statsCustomTo = document.getElementById('stats-to').value;
+  if (statsCustomFrom && statsCustomTo) refreshStatsDisplay();
+}
+
+function confirmResetStats() {
+  statsPeriod = 'all';
+  statsCustomFrom = null;
+  statsCustomTo = null;
+  // Re-render stats tab
+  render();
+}
+
+function getPeriodDateRange() {
+  const now = new Date();
+  if (statsPeriod === 'all') return { from: null, to: null };
+  if (statsPeriod === 'month') {
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+      to: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
+    };
+  }
+  if (statsPeriod === 'quarter') {
+    const q = Math.floor(now.getMonth() / 3);
+    return {
+      from: new Date(now.getFullYear(), q * 3, 1).toISOString().slice(0, 10),
+      to: new Date(now.getFullYear(), q * 3 + 3, 0).toISOString().slice(0, 10)
+    };
+  }
+  if (statsPeriod === 'year') {
+    return {
+      from: `${now.getFullYear()}-01-01`,
+      to: `${now.getFullYear()}-12-31`
+    };
+  }
+  if (statsPeriod === 'custom') {
+    return { from: statsCustomFrom, to: statsCustomTo };
+  }
+  return { from: null, to: null };
+}
+
+function tripInPeriod(trip, from, to) {
+  if (!from && !to) return true;
+  // Use dateFrom if available, else createdAt
+  const tripDate = trip.dateFrom || (trip.createdAt ? new Date(trip.createdAt).toISOString().slice(0, 10) : null);
+  if (!tripDate) return true;
+  if (from && tripDate < from) return false;
+  if (to && tripDate > to) return false;
+  return true;
+}
+
+function getPeriodLabel() {
+  const now = new Date();
+  if (statsPeriod === 'all') return 'Alle reiser';
+  if (statsPeriod === 'month') return now.toLocaleString('nb-NO', { month: 'long', year: 'numeric' });
+  if (statsPeriod === 'quarter') {
+    const q = Math.floor(now.getMonth() / 3) + 1;
+    return `Q${q} ${now.getFullYear()}`;
+  }
+  if (statsPeriod === 'year') return `${now.getFullYear()}`;
+  if (statsPeriod === 'custom' && statsCustomFrom && statsCustomTo) {
+    return `${statsCustomFrom} – ${statsCustomTo}`;
+  }
+  return '';
+}
+
+async function renderStats(container) {
+  const tpl = document.getElementById('tpl-stats');
+  container.innerHTML = '';
+  container.appendChild(tpl.content.cloneNode(true));
+
+  // Set active period button
+  container.querySelectorAll('.period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === statsPeriod);
+  });
+  if (statsPeriod === 'custom') {
+    container.querySelector('#stats-custom-range').classList.remove('hidden');
+    if (statsCustomFrom) container.querySelector('#stats-from').value = statsCustomFrom;
+    if (statsCustomTo) container.querySelector('#stats-to').value = statsCustomTo;
+  }
+
+  await refreshStatsDisplay();
+}
+
+async function refreshStatsDisplay() {
+  const { from, to } = getPeriodDateRange();
+  const allTrips = await getAllTrips();
+  const trips = allTrips.filter(t => tripInPeriod(t, from, to));
+
+  // Period label
+  const label = document.getElementById('stats-period-label');
+  if (label) label.textContent = getPeriodLabel();
+
+  // KPIs
+  let totalDays = 0;
+  let totalReceipts = 0;
+  let totalNOK = 0;
+  const catMap = {};
+  const statusMap = { draft: 0, submitted: 0, refunded: 0 };
+
+  trips.forEach(t => {
+    if (t.dateFrom && t.dateTo) {
+      const d = calculateDays(t.dateFrom, t.dateTo);
+      if (d > 0) totalDays += d;
+    }
+    totalReceipts += (t.receipts || []).length;
+    (t.receipts || []).forEach(r => {
+      if ((r.currency || 'NOK') === 'NOK') totalNOK += (r.amount || 0);
+      const cat = r.category || 'other';
+      catMap[cat] = (catMap[cat] || 0) + (r.amount || 0);
+    });
+    const st = t.status || 'draft';
+    if (statusMap[st] !== undefined) statusMap[st]++;
+    else statusMap[st] = 1;
+  });
+
+  const avgPerTrip = trips.length > 0 ? totalNOK / trips.length : 0;
+  const avgDays = trips.length > 0 ? Math.round(totalDays / trips.length * 10) / 10 : 0;
+
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setVal('kpi-trips', trips.length);
+  setVal('kpi-days', totalDays);
+  setVal('kpi-receipts', totalReceipts);
+  setVal('kpi-total', formatCurrency(totalNOK, 'NOK'));
+  setVal('kpi-avg', formatCurrency(avgPerTrip, 'NOK'));
+  setVal('kpi-avg-days', avgDays);
+
+  // Kategori-fordeling
+  const catContainer = document.getElementById('stats-categories');
+  if (catContainer) {
+    const sorted = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+    if (sorted.length === 0) {
+      catContainer.innerHTML = '<div class="stats-empty-msg">Ingen data i valgt periode</div>';
+    } else {
+      const max = sorted[0][1];
+      catContainer.innerHTML = sorted.map(([catId, amount]) => {
+        const cat = getCategory(catId);
+        const pct = max > 0 ? Math.round(amount / max * 100) : 0;
+        return `<div class="cat-bar-row">
+          <div class="cat-bar-label">
+            <i class="ti ${cat.icon}"></i>
+            <span>${cat.name}</span>
+          </div>
+          <div class="cat-bar-track">
+            <div class="cat-bar-fill cat-${catId}" style="width:${pct}%"></div>
+          </div>
+          <div class="cat-bar-amount">${formatCurrency(amount, 'NOK')}</div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // Status-søyler
+  const statusContainer = document.getElementById('stats-status-bars');
+  if (statusContainer) {
+    const statusLabels = { draft: 'Utkast', submitted: 'Levert', refunded: 'Refundert' };
+    const statusColors = { draft: '#f59e0b', submitted: '#3b82f6', refunded: '#10b981' };
+    const total = trips.length || 1;
+    statusContainer.innerHTML = Object.entries(statusMap)
+      .filter(([, count]) => count > 0)
+      .map(([st, count]) => {
+        const pct = Math.round(count / total * 100);
+        return `<div class="status-bar-row">
+          <div class="status-bar-label">${statusLabels[st] || st}</div>
+          <div class="status-bar-track">
+            <div class="status-bar-fill" style="width:${pct}%;background:${statusColors[st] || '#888'}"></div>
+          </div>
+          <div class="status-bar-count">${count}</div>
+        </div>`;
+      }).join('') || '<div class="stats-empty-msg">Ingen reiser i valgt periode</div>';
+  }
 }
 
 // ============ NEW TRIP ============

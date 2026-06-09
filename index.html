@@ -40,6 +40,10 @@
         <i class="ti ti-archive"></i>
         <span>Arkiv</span>
       </button>
+      <button class="tab-item" data-tab="stats" onclick="switchTab('stats')">
+        <i class="ti ti-chart-bar"></i>
+        <span>Statistikk</span>
+      </button>
       <button class="tab-item" data-tab="settings" onclick="switchTab('settings')">
         <i class="ti ti-settings"></i>
         <span>Innstillinger</span>
@@ -53,15 +57,24 @@
   <!-- Templates -->
   <template id="tpl-trips-list">
     <div class="screen">
-      <div id="greeting" class="greeting"></div>
-      <div id="stats-row" class="stats-row hidden">
-        <div class="stat-card">
-          <div class="stat-label">Aktive reiser</div>
-          <div class="stat-value" id="stat-active-value">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Denne måneden</div>
-          <div class="stat-value" id="stat-month-value">0 kr</div>
+      <div id="greeting" class="greeting-hero">
+        <div class="greeting-inner">
+          <div class="greeting-hello"></div>
+          <div class="greeting-sub"></div>
+          <div class="greeting-badges hidden" id="greeting-badges">
+            <div class="greeting-badge badge-teal">
+              <i class="ti ti-briefcase"></i>
+              <span id="badge-trips">0 reiser</span>
+            </div>
+            <div class="greeting-badge badge-orange">
+              <i class="ti ti-calendar-month"></i>
+              <span id="badge-days">0 dager</span>
+            </div>
+            <div class="greeting-badge badge-purple">
+              <i class="ti ti-currency-krone"></i>
+              <span id="badge-amount">0 kr</span>
+            </div>
+          </div>
         </div>
       </div>
       <div id="trips-toolbar" class="trips-toolbar hidden">
@@ -80,6 +93,70 @@
         <div class="empty-icon"><i class="ti ti-receipt"></i></div>
         <p class="empty-title">Ingen aktive reiser</p>
         <p class="empty-subtitle">Trykk «Ny reise» nederst for å starte</p>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-stats">
+    <div class="screen stats-screen">
+      <div class="stats-period-bar">
+        <button class="period-btn active" data-period="all" onclick="setStatsPeriod('all')">Alt</button>
+        <button class="period-btn" data-period="year" onclick="setStatsPeriod('year')">I år</button>
+        <button class="period-btn" data-period="quarter" onclick="setStatsPeriod('quarter')">Kvartal</button>
+        <button class="period-btn" data-period="month" onclick="setStatsPeriod('month')">Måned</button>
+        <button class="period-btn" data-period="custom" onclick="setStatsPeriod('custom')">Egendefinert</button>
+      </div>
+      <div id="stats-custom-range" class="stats-custom-range hidden">
+        <input type="date" id="stats-from">
+        <span style="color:var(--color-text-secondary)">–</span>
+        <input type="date" id="stats-to">
+        <button class="btn-small btn-primary" onclick="applyCustomPeriod()">Vis</button>
+      </div>
+      <div id="stats-period-label" class="stats-period-label"></div>
+      <div class="stats-kpi-grid">
+        <div class="stats-kpi-card kpi-teal">
+          <div class="kpi-icon"><i class="ti ti-briefcase"></i></div>
+          <div class="kpi-value" id="kpi-trips">0</div>
+          <div class="kpi-label">Reiser</div>
+        </div>
+        <div class="stats-kpi-card kpi-blue">
+          <div class="kpi-icon"><i class="ti ti-calendar"></i></div>
+          <div class="kpi-value" id="kpi-days">0</div>
+          <div class="kpi-label">Reisedager</div>
+        </div>
+        <div class="stats-kpi-card kpi-orange">
+          <div class="kpi-icon"><i class="ti ti-receipt"></i></div>
+          <div class="kpi-value" id="kpi-receipts">0</div>
+          <div class="kpi-label">Kvitteringer</div>
+        </div>
+        <div class="stats-kpi-card kpi-green">
+          <div class="kpi-icon"><i class="ti ti-currency-krone"></i></div>
+          <div class="kpi-value" id="kpi-total">0 kr</div>
+          <div class="kpi-label">Totalt</div>
+        </div>
+        <div class="stats-kpi-card kpi-purple">
+          <div class="kpi-icon"><i class="ti ti-chart-line"></i></div>
+          <div class="kpi-value" id="kpi-avg">0 kr</div>
+          <div class="kpi-label">Snitt/reise</div>
+        </div>
+        <div class="stats-kpi-card kpi-coral">
+          <div class="kpi-icon"><i class="ti ti-clock"></i></div>
+          <div class="kpi-value" id="kpi-avg-days">0</div>
+          <div class="kpi-label">Snitt dager</div>
+        </div>
+      </div>
+      <div class="stats-section">
+        <div class="stats-section-title"><i class="ti ti-tag"></i> Fordeling per kategori</div>
+        <div id="stats-categories"></div>
+      </div>
+      <div class="stats-section">
+        <div class="stats-section-title"><i class="ti ti-flag"></i> Status på reiser</div>
+        <div id="stats-status-bars"></div>
+      </div>
+      <div class="stats-reset-section">
+        <button class="btn-reset" onclick="confirmResetStats()">
+          <i class="ti ti-refresh"></i> Nullstill periode-filter
+        </button>
       </div>
     </div>
   </template>

@@ -641,21 +641,77 @@ main {
 }
 
 /* Personal greeting */
-.greeting {
-  margin-bottom: 14px;
-  padding: 0 2px;
+/* ============ FARGERIK VELKOMST-HERO ============ */
+.greeting-hero {
+  background: linear-gradient(135deg, var(--primary) 0%, #1d9e75 60%, #0a5a44 100%);
+  border-radius: 16px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  position: relative;
+}
+
+.greeting-hero::before {
+  content: '';
+  position: absolute;
+  top: -30px;
+  right: -20px;
+  width: 110px;
+  height: 110px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 50%;
+}
+
+.greeting-hero::after {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  left: 10px;
+  width: 70px;
+  height: 70px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 50%;
+}
+
+.greeting-inner {
+  padding: 18px 16px 16px;
+  position: relative;
+  z-index: 1;
 }
 
 .greeting-hello {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 21px;
+  font-weight: 700;
+  color: #fff;
   margin-bottom: 2px;
 }
 
 .greeting-sub {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: rgba(255,255,255,0.75);
+  margin-bottom: 14px;
 }
+
+.greeting-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.greeting-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.greeting-badge i { font-size: 13px; }
+
+.badge-teal   { background: rgba(255,255,255,0.18); color: #fff; }
+.badge-orange { background: rgba(255,200,100,0.25); color: #fff6d6; }
+.badge-purple { background: rgba(180,140,255,0.22); color: #f0e8ff; }
 
 /* Status selector i trip-detail */
 .status-selector {
@@ -743,32 +799,246 @@ main {
   border-color: var(--primary);
 }
 
-/* Stats row på trips-list */
-.stats-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 14px;
+/* ============ STATISTIKK-SKJERM ============ */
+.stats-screen {
+  padding-bottom: 20px;
 }
 
-.stat-card {
+.stats-period-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.stats-period-bar::-webkit-scrollbar { display: none; }
+
+.period-btn {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.period-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.stats-custom-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.stats-custom-range input[type="date"] {
+  flex: 1;
   background: var(--surface);
   border: 0.5px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
 }
 
-.stat-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 2px;
-}
-
-.stat-value {
-  font-size: 17px;
+.btn-small {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.2;
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  background: var(--primary);
+  color: #fff;
 }
+
+.stats-period-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+  padding-left: 2px;
+}
+
+.stats-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.stats-kpi-card {
+  border-radius: 12px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.kpi-teal   { background: linear-gradient(135deg, #0f6e56, #1d9e75); }
+.kpi-blue   { background: linear-gradient(135deg, #1d4ed8, #3b82f6); }
+.kpi-orange { background: linear-gradient(135deg, #d97706, #f59e0b); }
+.kpi-green  { background: linear-gradient(135deg, #059669, #34d399); }
+.kpi-purple { background: linear-gradient(135deg, #7c3aed, #a78bfa); }
+.kpi-coral  { background: linear-gradient(135deg, #dc2626, #f87171); }
+
+.kpi-icon { font-size: 18px; color: rgba(255,255,255,0.85); }
+.kpi-value { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.2; }
+.kpi-label { font-size: 10px; color: rgba(255,255,255,0.75); font-weight: 500; }
+
+.stats-section {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.stats-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-section-title i {
+  color: var(--primary);
+  font-size: 15px;
+}
+
+.cat-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cat-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 80px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cat-bar-label i { font-size: 14px; color: var(--text-secondary); }
+
+.cat-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--background);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cat-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  background: var(--primary);
+}
+
+/* Kategori-farger på bar */
+.cat-bar-fill.cat-hotel     { background: #6366f1; }
+.cat-bar-fill.cat-food      { background: #f59e0b; }
+.cat-bar-fill.cat-transport { background: #3b82f6; }
+.cat-bar-fill.cat-flight    { background: #06b6d4; }
+.cat-bar-fill.cat-fuel      { background: #f97316; }
+.cat-bar-fill.cat-parking   { background: #8b5cf6; }
+.cat-bar-fill.cat-supplies  { background: #ec4899; }
+.cat-bar-fill.cat-other     { background: #6b7280; }
+
+.cat-bar-amount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 68px;
+  text-align: right;
+}
+
+.status-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.status-bar-label {
+  min-width: 72px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.status-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--background);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.status-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.status-bar-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 20px;
+  text-align: right;
+}
+
+.stats-empty-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 10px 0;
+}
+
+.stats-reset-section {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.btn-reset {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ============================== */
+
+/* Stats row på trips-list - FJERNET, erstattet av greeting-hero */
 
 /* Kategori-velger */
 .category-grid {
